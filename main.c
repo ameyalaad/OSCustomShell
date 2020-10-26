@@ -37,7 +37,14 @@ int bi_viewcmdlog(){
 int bi_viewoutlog(){
     return 1;
 }
-int bi_changedir(char** sepcommand){
+int bi_changedir(char** command){
+    if (command[1]==NULL){
+        fprintf(stderr, "expected argument to \"cd\"\n");
+    } else {
+        if(chdir(command[1])!=0){
+            perror("chdir");
+        }
+    }
     return 1;
 }
 
@@ -283,7 +290,7 @@ char* ash_readline(){
 }
 
 void commandloop(){
-    // char cwd[PATH_MAX];
+    char cwd[PATH_MAX];
     int status = 1;
     char *line;
     char** nsepcommands;
@@ -294,10 +301,10 @@ void commandloop(){
     int logging = 0;
 
     do{
-        // if (getcwd(cwd, sizeof(cwd)) == NULL){
-        //     perror("getcwd");
-        // }
-        printf("$ ");
+        if (getcwd(cwd, sizeof(cwd)) == NULL){
+            perror("getcwd");
+        }
+        printf("%s$ ", cwd);
         line = ash_readline();
         nsepcommands = parse_line_to_nsep_commands(line, &num_commands);
         commands = parse_command_args(nsepcommands);
