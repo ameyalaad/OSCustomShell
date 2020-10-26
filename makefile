@@ -3,4 +3,6 @@ all: main.c
 	./main
 
 clean: 
-	rm main
+	rm main command.log
+
+nothing:

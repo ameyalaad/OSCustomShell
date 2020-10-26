@@ -33,6 +33,8 @@ int bi_log(int* logging, FILE** loghandle){
         perror("fopen");
         return 0;
     }
+    // Don't buffer command.log, so we can immediately see log
+    setbuf(*loghandle, NULL);
     return 1;
 }
 int bi_unlog(int* logging, FILE** loghandle){
@@ -40,7 +42,15 @@ int bi_unlog(int* logging, FILE** loghandle){
     fclose(*loghandle);
     return 1;
 }
-int bi_viewcmdlog(){
+int bi_viewcmdlog(FILE** loghandle){
+    // Read contents from file 
+    FILE* thandle = fopen(COMMAND_LOG, "r");
+    char c = fgetc(thandle); 
+    while (c != EOF) 
+    { 
+        fprintf(stdout, "%c", c); 
+        c = fgetc(thandle); 
+    } 
     return 1;
 }
 int bi_viewoutlog(){
@@ -98,7 +108,10 @@ int launch_command(char** command, int** pipes, int comindex, int num_commands){
         }
         // Run command
         if(execvp(command[0], command) == -1){
-            // TODO: We also need to do a check inside the cwd
+            if(execv(command[0], command) == -1){
+                perror("execv");
+                exit(1);
+            }
             perror("execvp");
         }
         exit(1);
@@ -118,7 +131,10 @@ int launch_command(char** command, int** pipes, int comindex, int num_commands){
             wpid = waitpid(pid, &status, WUNTRACED);
         } while(!WIFEXITED(status) && !WIFSIGNALED(status));
     }
-
+    if (WEXITSTATUS(status)!=0){
+        // Error form child process
+        return 0;
+    }
     return 1;
 }
 
@@ -148,7 +164,7 @@ int execute_commands(char*** commands, int num_commands, int* entered, int* exit
     int execstatus;
 
     do{
-        if(command == NULL){
+        if(command == NULL||num_commands==0){
             // Last command reached, prompt for new commands
             return 1;
         }
@@ -170,7 +186,7 @@ int execute_commands(char*** commands, int num_commands, int* entered, int* exit
             } else if (strcmp(command[0], "unlog")==0){
                 execstatus = bi_unlog(logging, loghandle);
             } else if (strcmp(command[0], "viewcmdlog")==0){
-                execstatus = bi_viewcmdlog();
+                execstatus = bi_viewcmdlog(loghandle);
             } else if (strcmp(command[0], "viewoutlog")==0){
                 execstatus = bi_viewoutlog();
             } else if (strcmp(command[0], "changedir")==0){
@@ -199,9 +215,8 @@ int execute_commands(char*** commands, int num_commands, int* entered, int* exit
 
     
 
-    // not an internal/builtin command (should never be reached?)
-    printf("Error reurned from launch_command. Debug for further details");
-    return 0;
+    // Error in child command, prompt for further input
+    return 1;
 }
 
 char*** parse_command_args(char** nsepcommands){
@@ -275,7 +290,13 @@ char** parse_line_to_nsep_commands(char* line, int* num_commands){
     }
 
     nsepcommand = strtok(line, TOK_PIPE_DELIM);
-
+    if(strcmp(nsepcommand, "\n")==0){
+        // fprintf(stdout, "Empty string\n");
+        nsepcommands[position]=NULL;
+        *num_commands=position;
+        return nsepcommands;
+    }
+    
     while(nsepcommand!=NULL){
         nsepcommands[position] = nsepcommand;
         position++;
