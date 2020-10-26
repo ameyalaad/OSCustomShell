@@ -10,7 +10,36 @@
 #define COMMAND_DELIMITERS " \t\r\n\a"
 #define READ_END 0
 #define WRITE_END 1
-
+#define COMMAND_LOG "command.log"
+#define OUTPUT_LOG "output.log"
+// Builtin commands
+int bi_entry(int* entered, int* exited){
+    *entered = 1;
+    *exited = 0;
+    return 1;
+}
+int bi_exit(int* entered, int* exited){
+    *entered = 0;
+    *exited = 1;
+    return 1;
+}
+int bi_log(int* logging){
+    *logging = 1;
+    return 1;
+}
+int bi_unlog(int* logging){
+    *logging = 0;
+    return 1;
+}
+int bi_viewcmdlog(){
+    return 1;
+}
+int bi_viewoutlog(){
+    return 1;
+}
+int bi_changedir(char** sepcommand){
+    return 1;
+}
 
 
 int launch_command(char** command, int** pipes, int comindex, int num_commands){ 
@@ -77,7 +106,7 @@ int launch_command(char** command, int** pipes, int comindex, int num_commands){
     return 1;
 }
 
-int execute_commands(char*** commands, int num_commands){
+int execute_commands(char*** commands, int num_commands, int* entered, int* exited, int* logging){
     // printf("Executing with %d commands\n", num_commands);
     // Creating a 2-D (pointer) array of 2*(n-1) integers, for pipe file descriptors
     int** pipes = malloc((num_commands-1)* sizeof(int*));
@@ -107,8 +136,34 @@ int execute_commands(char*** commands, int num_commands){
             // Last command reached, prompt for new commands
             return 1;
         }
-        // TODO: Set up triggers for internal commands
-        execstatus = launch_command(command, pipes, comindex, num_commands);
+        if(strcmp(command[0], "entry")==0){
+            execstatus = bi_entry(entered, exited);
+        } 
+        else if(*exited==1){
+            printf("Command line interpreter exited\n");
+            return 1;
+        }else if (*entered==0) {
+            printf("Command line interpreter not started\n");
+            return 1;
+        }else{
+            //check for other builtins as well
+            if(strcmp(command[0], "exit")==0){
+                execstatus = bi_exit(entered, exited);
+            } else if (strcmp(command[0], "log")==0){
+                execstatus = bi_log(logging);
+            } else if (strcmp(command[0], "unlog")==0){
+                execstatus = bi_unlog(logging);
+            } else if (strcmp(command[0], "viewcmdlog")==0){
+                execstatus = bi_viewcmdlog();
+            } else if (strcmp(command[0], "viewoutlog")==0){
+                execstatus = bi_viewoutlog();
+            } else if (strcmp(command[0], "changedir")==0){
+                execstatus = bi_changedir(command);
+            } else {
+                // Not an internal command, run exec
+                execstatus = launch_command(command, pipes, comindex, num_commands);
+            }
+        }
         comindex++;
         command = commands[comindex];
     } while(execstatus);
@@ -234,6 +289,9 @@ void commandloop(){
     char** nsepcommands;
     char ***commands; // 3-D array to store commands and args
     int num_commands = -1; //just setting an invalid default value
+    int entered = 0;
+    int exited = 0;
+    int logging = 0;
 
     do{
         // if (getcwd(cwd, sizeof(cwd)) == NULL){
@@ -243,7 +301,7 @@ void commandloop(){
         line = ash_readline();
         nsepcommands = parse_line_to_nsep_commands(line, &num_commands);
         commands = parse_command_args(nsepcommands);
-        status = execute_commands(commands, num_commands); //external pipe? internal pipe
+        status = execute_commands(commands, num_commands, &entered, &exited, &logging); //external pipe? internal pipe
     }while(status);
 }
 
