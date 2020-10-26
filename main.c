@@ -4,14 +4,16 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/wait.h>
+#include <time.h>
 
 #define TOKEN_BUFFER_SIZE 64
 #define TOK_PIPE_DELIM "|"
 #define COMMAND_DELIMITERS " \t\r\n\a"
 #define READ_END 0
 #define WRITE_END 1
-#define COMMAND_LOG "command.log"
-#define OUTPUT_LOG "output.log"
+#define COMMAND_LOG "./command.log"
+#define OUTPUT_LOG "./output.log"
+
 // Builtin commands
 int bi_entry(int* entered, int* exited){
     *entered = 1;
@@ -23,12 +25,19 @@ int bi_exit(int* entered, int* exited){
     *exited = 1;
     return 1;
 }
-int bi_log(int* logging){
+
+int bi_log(int* logging, FILE** loghandle){
     *logging = 1;
+    *loghandle = fopen(COMMAND_LOG, "a");
+    if(loghandle==NULL){
+        perror("fopen");
+        return 0;
+    }
     return 1;
 }
-int bi_unlog(int* logging){
+int bi_unlog(int* logging, FILE** loghandle){
     *logging = 0;
+    fclose(*loghandle);
     return 1;
 }
 int bi_viewcmdlog(){
@@ -113,7 +122,7 @@ int launch_command(char** command, int** pipes, int comindex, int num_commands){
     return 1;
 }
 
-int execute_commands(char*** commands, int num_commands, int* entered, int* exited, int* logging){
+int execute_commands(char*** commands, int num_commands, int* entered, int* exited, int* logging, FILE** loghandle){
     // printf("Executing with %d commands\n", num_commands);
     // Creating a 2-D (pointer) array of 2*(n-1) integers, for pipe file descriptors
     int** pipes = malloc((num_commands-1)* sizeof(int*));
@@ -157,9 +166,9 @@ int execute_commands(char*** commands, int num_commands, int* entered, int* exit
             if(strcmp(command[0], "exit")==0){
                 execstatus = bi_exit(entered, exited);
             } else if (strcmp(command[0], "log")==0){
-                execstatus = bi_log(logging);
+                execstatus = bi_log(logging, loghandle);
             } else if (strcmp(command[0], "unlog")==0){
-                execstatus = bi_unlog(logging);
+                execstatus = bi_unlog(logging, loghandle);
             } else if (strcmp(command[0], "viewcmdlog")==0){
                 execstatus = bi_viewcmdlog();
             } else if (strcmp(command[0], "viewoutlog")==0){
@@ -170,6 +179,19 @@ int execute_commands(char*** commands, int num_commands, int* entered, int* exit
                 // Not an internal command, run exec
                 execstatus = launch_command(command, pipes, comindex, num_commands);
             }
+        }
+        // Add to log file where status can be execstatus
+        if(*logging==1){
+            if(loghandle==NULL){ // Sanity check
+                perror("fopen");
+            }
+            time_t t = time(NULL);
+            struct tm tm = *localtime(&t);
+            char status[8] = "failure";
+            if (execstatus){
+                strcpy(status, "success");
+            }
+            fprintf(*loghandle, "%s %02d/%02d/%d %02d:%02d:%02d %s\n", command[0], tm.tm_mday, tm.tm_mon+1, tm.tm_year+1900, tm.tm_hour, tm.tm_min, tm.tm_sec, status);
         }
         comindex++;
         command = commands[comindex];
@@ -299,6 +321,7 @@ void commandloop(){
     int entered = 0;
     int exited = 0;
     int logging = 0;
+    FILE* loghandle;
 
     do{
         if (getcwd(cwd, sizeof(cwd)) == NULL){
@@ -308,7 +331,7 @@ void commandloop(){
         line = ash_readline();
         nsepcommands = parse_line_to_nsep_commands(line, &num_commands);
         commands = parse_command_args(nsepcommands);
-        status = execute_commands(commands, num_commands, &entered, &exited, &logging); //external pipe? internal pipe
+        status = execute_commands(commands, num_commands, &entered, &exited, &logging, &loghandle);
     }while(status);
 }
 
