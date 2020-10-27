@@ -45,6 +45,9 @@ int bi_unlog(int* logging, FILE** loghandle){
 int bi_viewcmdlog(FILE** loghandle){
     // Read contents from file 
     FILE* thandle = fopen(COMMAND_LOG, "r");
+    if (thandle==NULL){
+        return 1;
+    }
     char c = fgetc(thandle); 
     while (c != EOF) 
     { 
